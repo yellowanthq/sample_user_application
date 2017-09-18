@@ -74,7 +74,7 @@ class AppCommands(object):
 
         #Instantiate a Message Object
         message = MessageClass()
-        message.message_text = ""
+        message.message_text = "Here are the users that signed up in the last 24 hours \n\n"
 
         #Create list to store the results
         users_list = []
