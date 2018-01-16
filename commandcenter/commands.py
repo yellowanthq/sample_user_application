@@ -27,6 +27,7 @@ class appCommands(object):
             'get_user_details': self.get_user_details
         }
 
+        #loop through commands, call the appropriate function with args from yellowant
         if str(self.invoke_name) in commands:
             return commands[str(self.invoke_name)](self.args)
         else:
