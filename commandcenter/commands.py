@@ -20,6 +20,9 @@ class appCommands(object):
 
     #Message parser
     def parse(self):
+
+        #Make sure the following three commands are defined in the developer console with type "Command"
+
         commands = {
             'list-users-today': self.list_users_today,
             'get-users': self.get_users,
