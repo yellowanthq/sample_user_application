@@ -129,30 +129,24 @@ Create a button in your website that redirects the user to
 Define your redirect_url view in Django something like below(More in details in
 API docs — [here](https://yellowant.com/api/#get-user-profile)):
 
-    def 
-    (request):
-
+    def redirect_url(request):
         #User redirected to redirect_url with GET parameter 'code'
-        code = request.GET.get("code", False)    
+        code = request.GET.get("code", False)
         ya_obj = YellowAnt(app_key=settings.YA_CLIENT_ID,
                         app_secret=settings.YA_CLIENT_SECRET,
                         access_token='',
                         redirect_uri=settings.YELLOWANT_REDIRECT_URL)
-
         #Exchanging 'code' for a permanent access token
         access_token_dict = ya_obj.get_access_token(code)
         access_token = access_token_dict['access_token']
-
         #Initialize YellowAnt object with access token and get profile
         yellowant_user = YellowAnt(access_token=access_token)
         user_profile = yellowant_user.get_user_profile()
         ya_user_id = user_profile['id']
-
         #create a user application integration
         user_integration = yellowant_user.create_user_integration()
         integration_id = user_integration['user_application']
         invoke_name = user_integration['user_invoke_name']
-
         #Store user_application id, along with user token
         return HttpResponse("Authenticated!")
 
@@ -165,8 +159,21 @@ representation of application, function and arguments and sends it to the
 Lets define the view for api_url
 
     #When a user enters a command, YellowAnt sends the api_url a POST request with the payload that looks something like this:
-
-    34NaaVTgWhN3QIK74WJX8i1aSoBHMNnvgThygGxi8pPZtJ9OhaIeNlApO8vWkwMV3G0ujUxzrSHZowNoIrxZqa3DnHgi5FJBugjkhws8HaN8U6KkfPo33F1pHiBniYkn
+    {
+      "data":'{
+        "user": 4534,
+        "verification_token": "34NaaVTgWhN3QIK74WJX8i1aSoBHMNnvgThygGxi8pPZtJ9OhaIeNlApO8vWkwMV3G0ujUxzrSHZowNoIrxZqa3DnHgi5FJBugjkhws8HaN8U6KkfPo33F1pHiBniYkn",
+        "application": 5639,
+        "application_invoke_name": "user",
+        "function": 74645,
+        "function_name": "list-users-today",
+        "event": 5043867,
+        "args": {
+          "sort":"asc",
+          "subscription": "paid"
+        }
+      }'
+    }
 
 ### **API URL Code: Catch the command and process**
 
@@ -202,172 +209,142 @@ formatting [here](https://www.yellowant.com/api/#message-formatting). We will
 not be dealing with advanced Message formatting like attachments or buttons in
 this article.
 
-    models 
-    SiteUsers
-    yellowant.messageformat 
-    MessageClass, MessageAttachmentsClass, MessageButtonsClass, AttachmentFieldsClass
-    datetime
-    django.core 
-    serializers
-    (object):
-        
-    __init__(self, function, service_application, args, invoke_name):
+    from models import SiteUsers
+    from yellowant.messageformat import MessageClass, MessageAttachmentsClass, MessageButtonsClass, AttachmentFieldsClass
+    import datetime
+    from django.core import serializers
+
+
+
+    class appCommands(object):
+        def __init__(self, function, service_application, args, invoke_name):
             self.function = function
             self.service_application = service_application
             self.args = args
             self.invoke_name = invoke_name
+
         #Simple message generator
-        
-    (self, message_text=""):
+        def generate_simple_message(self, message_text=""):
             message = MessageClass()
             message.message_text = message_text
-            
-    message.to_json()
+            return message.to_json()
+
         #Message parser
-        
-    (self):
+        def parse(self):
+
             #Make sure the following three commands are defined in the developer console with type "Command"
+
             commands = {
                 'list-users-today': self.list_users_today,
                 'get-users': self.get_users,
                 'change_user_subcription':self.change_user_subcription,
                 'get_user_details': self.get_user_details
             }
+
             #loop through commands, call the appropriate function with args from yellowant
-            
-    str(self.invoke_name) 
-    commands:
-                
-    commands[str(self.invoke_name)](self.args)
-            
-    :
+            if str(self.invoke_name) in commands:
+                return commands[str(self.invoke_name)](self.args)
+            else:
                 message = MessageClass()
                 message.message_text = "I could not find any command"
-                
-    message.to_json()
+                return message.to_json()
+
         #'list_user_details' function. Takes 'id'(user Id), required
-        
-    (self, args):
-            
-    'id' 
-    args:
-                
-    self.generate_simple_message("Please provide parameter 'id' in your command")
-            
-    :
+        def list_user_details(self, args):
+            if 'id' not in args:
+                return self.generate_simple_message("Please provide parameter 'id' in your command")
+            else:
                 #Check if Id is a number
-                
-    args['id'].is_digit():
+                if args['id'].is_digit():
                     user_id = int(args['id'])
-                
-    :
-                    
-    self.generate_simple_message("Please provide an integer value for parameter 'id' in your command")
-            
-    :
+                else:
+                    return self.generate_simple_message("Please provide an integer value for parameter 'id' in your command")
+
+            try:
                 #Searching for user with id
                 user_object = SiteUsers.objects.get(id=user_id)
-            
-    SiteUsers.DoesNotExist:
+            except SiteUsers.DoesNotExist:
                 #return error message if user does not exist
-                
-    self.generate_simple_message("User with that id does not exist")
+                return self.generate_simple_message("User with that id does not exist")
+
             user_details_message = MessageClass()
             user_details_message.message_text = "User Id - %d, Fullname - %s, Date joined - %s, Subscription - %s" % (user_id, user_object.full_name, user_object.date_joined, user_object.subscription)
             user_json = serializers.serialize("json", user_object)
             #Adding JSON data to message for use in workflows
             user_details_message.data = user_json
-            
-    user_details_message.to_json()
+            return user_details_message.to_json()
+
         #'change_user_subcription' function. Takes 'id'(user Id) and 'subscription' as args, both required
-        
-    (self, args):
-            
-    'id' 
-    args 
-    'subscription' 
-    args:
-                
-    self.generate_simple_message("Please provide parameter 'id' and 'subscription' in your command")
-            
-    :
+        def change_user_subcription(self, args):
+            if 'id' not in args or 'subscription' not in args:
+                return self.generate_simple_message("Please provide parameter 'id' and 'subscription' in your command")
+            else:
                 #Check if Id is a number
-                
-    args['id'].is_digit():
+                if args['id'].is_digit():
                     user_id = int(args['id'])
-                
-    :
-                    
-    self.generate_simple_message("Please provide an integer value for parameter 'id' in your command")
-            
-    :
+                else:
+                    return self.generate_simple_message("Please provide an integer value for parameter 'id' in your command")
+
+            try:
                 #Searching for user with id
                 user_object = SiteUsers.objects.get(id=user_id)
                 #changing subscription value
                 user_object.subscription = args['subscription']
-            
-    SiteUsers.DoesNotExist:
+            except SiteUsers.DoesNotExist:
                 #return error message if user does not exist
-                
-    self.generate_simple_message("User with that id does not exist")
+                return self.generate_simple_message("User with that id does not exist")
+
+
             user_details_message = MessageClass()
             user_details_message.message_text = "User subscription changed"
             user_json = serializers.serialize("json", user_object)
             #Adding JSON data to message for use in workflows
             user_details_message.data = user_json
-            
-    user_details_message.to_json()
+            return user_details_message.to_json()
+
         #'list_users_today' function. Takes 'sort' or 'subscription' as args, both optional
-        
-    (self, args):
+        def list_users_today(self, args):
             #Check if 'sort' param is present, else assign default as 'asc'
-            
-    'sort' 
-    args:
-                
-    args['sort'] 
-    ['asc', 'dsc']:
+            if 'sort' in args:
+                if args['sort'] in ['asc', 'dsc']:
                     order = args['sort']
-                
-    :
+                else:
                     #If invalid, fallback to default value
                     order = 'asc'
-            
-    :
+            else:
                 #setting default order 'asc'
                 order = 'asc'
-            
-    'subscription' 
-    args:
+
+            if 'subscription' in args:
                 subscription = args['subscription']
-            
-    :
+            else:
                 subscription = None
+
             #Instantiate a Message Object
             message = MessageClass()
             message.message_text = ""
+
             #Create list to store the results
             users_list = []
+
             d_24 = datetime.datetime.now() - datetime.timedelta(days=1)
-            
-    subscription 
-    None:
+            if subscription is None:
                 users_today = SiteUsers.objects.filter(date_joined__gte=d_24)
-            
-    :
+            else:
                 users_today = SiteUsers.objects.filter(date_joined__gte=d_24, subscription=subscription)
+
             #Creating User attachments with information of users with a button to fetch user details using the "list_user_details" command
-            
-    user 
-    users_today:
+            for user in users_today:
                 user_attachment = MessageAttachmentsClass()
                 user_attachment.title = user.full_name
+
                 #Showing user data in a "Field"
                 date_field = AttachmentFieldsClass()
                 date_field.title = "Date Joined"
                 date_field.value = user.date_joined
                 date_field.short = 1 #Utilize two columns
                 user_attachment.attach_field(date_field)
+
                 #Adding a button which calls the "list_user_details" command
                 get_user_details_button = MessageButtonsClass()
                 get_user_details_button.value = "1" #Give some random value
@@ -379,6 +356,7 @@ this article.
                     "data": {"id": user.id}
                 }
                 user_attachment.attach_button(get_user_details_button)
+
                 #Adding a button which provides with a dialog to change the subscription for the user using "change_user_subcription" function
                 change_user_sub_button = MessageButtonsClass()
                 change_user_sub_button.value = "1" #Give some random value
@@ -390,12 +368,13 @@ this article.
                     "data": {"id": user.id}, "inputs":['subscription']
                 }
                 user_attachment.attach_button(change_user_sub_button)
+
                 #Add attachment to message
                 message.attach(user_attachment)
+
             #Adding users data to be used in workflows
             message.data = {"users":serializers.serialize("json", users_today)}
-            
-    message.to_json()
+            return message.to_json()
 
 ### Time to test our new application!
 
